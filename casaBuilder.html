@@ -1,0 +1,304 @@
+<!doctype html>
+<html>
+<head>
+    <title>Mnemonic password generator</title>
+    <script src="chrome/jquery.js"></script>
+    <script src="bitcoinjslib.js"></script>
+    <script src="mnemonic.js"></script>
+    <script src="vendor/bip39lib.js"></script>
+    <script src="balanceChecker.js"></script>
+
+
+
+    
+    <link rel="stylesheet" type="text/css" href="chrome/mnemonic.css" />
+
+</head>
+<body>
+    <p id="header">Mnemonic passphrase 
+
+        </p>
+
+        <div>
+
+            <label for="phrase">Passphrase</label>
+            <textarea id="phrase" class=" form-control"
+                      rows="40" cols="100" data-show-qr="" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" ></textarea>
+        </div>
+
+    <input id="aliasUser" class=" form-control"
+              rows="3"  data-show-qr="" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" value="ssh" ></input>
+    </div>.
+
+    <input id="aliasProtocol" class=" form-control"
+              rows="3"  autocapitalize="off" spellcheck="false" value="ukn"></input>
+    </div>
+
+    <input id="aliasPass" class=" form-control"
+           rows="3"  autocapitalize="off" spellcheck="false" value="ukn"></input>
+    </div>
+
+    <input type="button" value="Click me" onclick="parseMnemonic()">
+
+
+
+    <style type="text/css">
+        .tg  {border-collapse:collapse;border-spacing:0;}
+        .tg td{border-color:black;border-style:solid;border-width:1px;font-family:Arial, sans-serif;font-size:14px;
+            overflow:hidden;padding:10px 5px;word-break:normal;}
+        .tg th{border-color:black;border-style:solid;border-width:1px;font-family:Arial, sans-serif;font-size:14px;
+            font-weight:normal;overflow:hidden;padding:10px 5px;word-break:normal;}
+        .tg .tg-0lax{text-align:left;vertical-align:top}
+    </style>
+    <table class="tg">
+        <thead>
+        <tr>
+            <th class="tg-0lax">address</th>
+            <th class="tg-0lax">alias</th>
+            <th class="tg-0lax">tx count</th>
+            <th class="tg-0lax">btc balance</th>
+            <th class="tg-0lax">BCH balance</th>
+        </tr>
+        </thead>
+        <tbody id="addressList">
+        <tr>
+            <td class="tg-0lax"></td>
+            <td class="tg-0lax"></td>
+            <td class="tg-0lax"></td>
+            <td class="tg-0lax"></td>
+            <td class="tg-0lax"></td>
+        </tr>
+        </tbody>
+    </table>
+
+
+
+</body>
+
+<script>
+
+    let currentDepth = 0 ;
+    let master = null ;
+    const stopAfterEmptyAddress = 4 ;
+    let actualEmptyAddressCount = 0 ;
+    let bchDepth = 0 ;
+    let currentAliasOwner = $('#aliasUser');
+    let currentAliasProtocol = $('#aliasProtocol');
+    let currentAliasPass = $('#aliasPass');
+
+    let totalBTC  = 0 ;
+    let totalBCH  = 0 ;
+
+    let depth ;
+
+
+    let getSeedFromPassphrase = function(passphrase) {
+
+        try {
+            console.log("parsing")
+            var buffer = getMnemonicJSSeed(passphrase);
+
+            return {
+                "seed": buffer,
+                "type": "mnemonicJS"
+            }
+
+        } catch (e) {
+
+            console.log("not old recovery phrase protocol");
+            try {
+
+                var buffer = getBip39Seed(passphrase);
+
+                return {
+                    "seed": buffer,
+                    "type": "bip39"
+                }
+
+            } catch (e) {
+
+                throw e;
+
+            }
+
+        }
+
+    };
+
+    function getMnemonicJSSeed(passphrase) {
+
+        var words = passphrase.split(' ');
+
+        if (words.length !== 12) {
+            console.error("invalid length");
+            throw "passphrase invalid length";
+
+        }
+        console.log("preloading");
+        let m = new Mnemonic(words);
+        console.log("post");
+
+        return m.toHex();
+
+
+    }
+
+    function getBip39Seed(passphrase) {
+        try {
+            var words = passphrase.split(' ');
+
+            if (words.length !== 12) {
+                globals.console.error("invalid length");
+                throw "passphrase invalid length";
+
+            }
+
+            if (bip39lib.bip39.validateMnemonic(passphrase, bip39lib.bip39.wordlists.EN) === true) {
+
+                var seed = bip39lib.bip39.mnemonicToSeed(passphrase);
+
+                return seed;
+
+            }
+            throw "invalid bip39 seed";
+
+        } catch (e) {
+
+            throw e;
+
+        }
+
+    }
+
+    function receiveAddressBalance(result,chain){
+
+
+        console.log(result);
+        console.log(chain);
+        if (chain === 'bitcoin') {
+
+            if (result.data.received === 0) {
+
+                console.log("zero address");
+                actualEmptyAddressCount++
+            } else {
+                actualEmptyAddressCount = 0;
+            }
+
+            if (actualEmptyAddressCount > stopAfterEmptyAddress) {
+
+
+                var addressLine = '<tr><td class="tg-0lax">Total</td>';
+                addressLine += '<td class="tg-0lax"></td>';
+                addressLine += '<td class="tg-0lax"></td>';
+                addressLine += '<td class="tg-0lax">' + totalBTC + '</td>';
+                addressLine += '<td class="tg-0lax">' + totalBCH + '</td>';
+                $("#addressList").append(addressLine)
+
+
+                return;
+
+            }
+            let depthCount = currentDepth +1
+
+            let aliasText = currentAliasOwner.val()+'.'+currentAliasProtocol.val()+'.'+currentAliasPass.val()
+                +'.btc.'+depthCount;
+
+            let btcValue = Number(result.data.balance * 10e-9).toFixed(9);
+            totalBTC += Number(btcValue) ;
+            console.log(totalBTC);
+
+            var addressLine = '<tr><td class="tg-0lax">' + result.data.address + '</td>';
+            addressLine += '<td class="tg-0lax">' + aliasText+'</td>';
+            addressLine += '<td class="tg-0lax">' + result.data.tx_count + '</td>';
+            addressLine += '<td class="tg-0lax">' + btcValue + '</td>';
+            addressLine += '<td id="bchBal-'+currentDepth+'" class="tg-0lax">' + 0 + '</td>';
+
+            digAddress(master, currentDepth,'bch');
+            $("#addressList").append(addressLine)
+
+            currentDepth++;
+            //if (actualEmptyAddressCount > 3) return;
+            setTimeout(function () {
+                digAddress(master, currentDepth)
+            }, 1000);
+        }
+        else if (chain==='bch') {
+
+
+            console.log("bch got"+result.balance + "defph" +bchDepth);
+
+            $("#bchBal-"+bchDepth).html(result.balance)
+            totalBCH += Number(result.balance) ;
+            bchDepth++ ;
+           // $("#bchBal-"+0).html("shab")
+        }
+
+
+
+    }
+    
+    function parseMnemonic() {
+
+        let passphraseField = $('#phrase').val();
+
+        console.log(passphraseField);
+         actualEmptyAddressCount = 0 ;
+        currentDepth = 0 ;
+        bchDepth = 0 ;
+         totalBTC  = 0 ;
+         totalBCH  = 0 ;
+
+        $("#addressList").html('');
+
+
+        let seedArray =  getSeedFromPassphrase(passphraseField);
+        let seed =  seedArray.seed ;
+
+        let protocol = seedArray.type ;
+        if (protocol === 'mnemonicJS' ) protocol = 'cw';
+        if (protocol === 'bip39' ) protocol = 'b39';
+
+        currentAliasProtocol.val(protocol)
+
+        console.log(seedArray);
+
+
+
+        var seedHex = bitcoinJSLib.buffer(seed, "hex");
+         master = bitcoinJSLib.bitcoin.HDNode.fromSeedBuffer(seedHex);
+        var emptyAddress = false ;
+        let stopAfterEmptyAddresses = 3 ;
+
+       digAddress(master,currentDepth)
+
+    }
+
+    function digAddress(master,depth,chain='bitcoin'){
+
+
+        console.log("digging at depth "+depth + " m/0'/0/"+depth)
+        var keyPair = master.derivePath("m/0'/0/"+depth);
+
+        var address = keyPair.getAddress();
+
+        balance = getBalance(chain, address,receiveAddressBalance);
+        console.log(address);
+        console.log(balance);
+        emptyAddress  = true ;
+
+
+
+
+    }
+
+
+
+    var legacyMnemonic = 'sleep music stupid spend taught goodbye companion black mourn darkness struggle soar'; //legacy
+    var legacyMnemonic = 'pioneer acid organ walk panda female purity ecology gadget blind opinion range'; //bip39
+
+
+
+</script>
+
+</html>
